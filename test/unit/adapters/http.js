@@ -459,7 +459,7 @@ describe('supports http with nodejs', function () {
     });
   });
 
-  it('should support HTTP proxies', function (done) {
+  it('should support HTTP proxies with HTTP requests', function (done) {
     server = http.createServer(function (req, res) {
       res.setHeader('Content-Type', 'text/html; charset=UTF-8');
       res.end('12345');
@@ -497,7 +497,57 @@ describe('supports http with nodejs', function () {
     });
   });
 
-  it('should support HTTPS proxies', function (done) {
+  it('should support HTTP proxies with HTTPS requests', function (done) {
+    var options = {
+      key: fs.readFileSync(path.join(__dirname, 'key.pem')),
+      cert: fs.readFileSync(path.join(__dirname, 'cert.pem'))
+    };
+
+    server = https.createServer(options, function (req, res) {
+      res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+      res.end('12345');
+    }).listen(4444, function () {
+      proxy = http.createServer(function (request, response) {
+        var parsed = url.parse(request.url);
+        var opts = {
+          host: parsed.hostname,
+          port: parsed.port,
+          path: parsed.path,
+          protocol: parsed.protocol,
+          rejectUnauthorized: false
+        };
+
+        https.get(opts, function (res) {
+          var body = '';
+          res.on('data', function (data) {
+            body += data;
+          });
+          res.on('end', function () {
+            response.setHeader('Content-Type', 'text/html; charset=UTF-8');
+            response.end(body + '6789');
+          });
+        });
+      }).listen(4000, function () {
+        axios.get('https://localhost:4444/', {
+          proxy: {
+            host: 'localhost',
+            port: 4000,
+            protocol: 'http'
+          },
+          /*httpsAgent: new https.Agent({
+            rejectUnauthorized: false
+          })*/
+        }).then(function (res) {
+          assert.equal(res.data, '123456789', 'should pass through proxy');
+          done();
+        }).catch(function (err) {
+          assert.fail(err);
+        });
+      });
+    });
+  });
+
+  it('should support HTTPS proxies with HTTPS requests', function (done) {
     var options = {
       key: fs.readFileSync(path.join(__dirname, 'key.pem')),
       cert: fs.readFileSync(path.join(__dirname, 'cert.pem'))
@@ -542,7 +592,6 @@ describe('supports http with nodejs', function () {
           done();
         }).catch(function (err) {
           assert.fail(err);
-          done()
         });
       });
     });
@@ -643,7 +692,6 @@ describe('supports http with nodejs', function () {
           done();
         }).catch(function (err) {
           assert.fail(err);
-          done()
         }).finally(function () {
           process.env.https_proxy = ''
         });
